@@ -943,6 +943,55 @@ curl -X POST http://localhost:8080/api/v1/orders
 
 ---
 
+# Тестирование
+
+Проект содержит интеграционные и HTTP-тесты с использованием реального PostgreSQL.
+
+Запуск всех тестов:
+
+```bash
+go test ./...
+```
+Сервисные тесты:
+
+```bash
+go test ./internal/kitchen/service -v
+```
+
+HTTP-тесты:
+
+```bash
+go test ./internal/kitchen/handler -v
+```
+
+Проверка конкурентного списания:
+
+```bash
+go test ./internal/kitchen/service -run TestCreateOrderConcurrency -v
+```
+
+Многократный запуск:
+
+```bash
+go test ./internal/kitchen/service -run TestCreateOrderConcurrency -count=20
+```
+
+Тесты проверяют:
+
+создание заказа;
+бизнес-валидацию;
+доступность товаров;
+минимальную сумму заказа;
+переходы статусов;
+отмену;
+HTTP API;
+Partner API;
+обработку ошибок;
+корректное списание остатков;
+конкурентное создание заказов при ограниченном остатке.
+
+---
+
 # Ограничения MVP
 
 В рамках задания намеренно не реализованы функции, не являющиеся необходимыми для демонстрации основных сценариев:

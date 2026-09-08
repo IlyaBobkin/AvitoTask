@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type API struct {
@@ -77,19 +78,28 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_user", "X-User-Id must be UUID")
 		return
 	}
+
 	var in service.CreateOrder
-	if e = decode(r, &in); e == nil {
-		e = a.v.Struct(in)
+
+	if e = decode(r, &in); e != nil {
+		fail(w, 400, "bad_request", e.Error())
+		return
 	}
-	if e == nil {
-		var x domain.Order
-		x, e = a.o.Create(r.Context(), u, in)
-		if e == nil {
-			write(w, 201, x)
-			return
-		}
+
+	if e = a.v.Struct(in); e != nil {
+		validationError(w, e)
+		return
 	}
-	respond(w, e, nil)
+
+	var x domain.Order
+
+	x, e = a.o.Create(r.Context(), u, in)
+	if e != nil {
+		respond(w, e, nil)
+		return
+	}
+
+	write(w, 201, x)
 }
 func (a *API) order(w http.ResponseWriter, r *http.Request) {
 	x, e := id(r)
@@ -208,13 +218,19 @@ func respond(w http.ResponseWriter, e error, v any) {
 		write(w, 200, v)
 		return
 	}
-	if errors.Is(e, service.ErrNotFound) {
-		fail(w, 404, "not_found", e.Error())
+
+	if errors.Is(e, service.ErrNotFound) || errors.Is(e, pgx.ErrNoRows) {
+		fail(w, 404, "not_found", "not found")
 		return
 	}
+
 	if errors.Is(e, service.ErrRule) {
 		fail(w, 422, "validation_error", e.Error())
 		return
 	}
-	fail(w, 400, "bad_request", e.Error())
+
+	fail(w, 500, "internal_error", "internal server error")
+}
+func validationError(w http.ResponseWriter, err error) {
+	fail(w, http.StatusBadRequest, "validation_error", err.Error())
 }
