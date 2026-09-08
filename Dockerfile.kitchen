@@ -1,10 +1,23 @@
 FROM golang:1.22-alpine AS build
+
 WORKDIR /src
-COPY go.mod go.sum* ./
+
+# Сначала копируем только файлы модулей — лучше кэшируется
+COPY go.mod go.sum ./
 RUN go mod download
+
+# Теперь копируем весь исходный код
 COPY . .
-RUN CGO_ENABLED=0 go build -o /kitchen-api ./cmd/kitchen-api
+
+# Собираем
+RUN CGO_ENABLED=0 GOOS=linux go build -o /kitchen-api ./cmd/kitchen-api
+
+# --- runtime stage ---
 FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+
 COPY --from=build /kitchen-api /kitchen-api
+
 EXPOSE 8080
 ENTRYPOINT ["/kitchen-api"]

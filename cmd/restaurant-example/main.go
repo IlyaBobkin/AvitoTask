@@ -21,7 +21,39 @@ func main() {
 	if a.kitchen == "" {
 		a.kitchen = "http://localhost:8080"
 	}
-	a.menu = map[string]any{"categories": []any{map[string]any{"name": "Popular", "position": 1, "products": []any{map[string]any{"name": "Burger", "description": "Demo burger", "price": 60000, "is_available": true, "modifiers": []any{map[string]any{"name": "Sauce", "is_required": true, "options": []any{map[string]any{"name": "Cheese", "price_delta": 10000, "is_available": true}}}}}}}}}
+	a.menu = map[string]any{
+		"categories": []any{
+			map[string]any{
+				"id":       "b1111111-1111-1111-1111-111111111111",
+				"name":     "Popular",
+				"position": 1,
+				"products": []any{
+					map[string]any{
+						"id":           "a9f8378f-ed76-4664-9562-949129e9cc9a",
+						"name":         "Burger",
+						"description":  "Demo burger",
+						"price":        60000,
+						"is_available": true,
+						"modifiers": []any{
+							map[string]any{
+								"id":          "c2833d65-627e-46f6-bf35-972cccd5bc00",
+								"name":        "Sauce",
+								"is_required": true,
+								"options": []any{
+									map[string]any{
+										"id":           "a2833d65-627e-46f6-bf35-972cccd5bc00",
+										"name":         "Cheese",
+										"price_delta":  10000,
+										"is_available": true,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 	go a.sync()
 	m := http.NewServeMux()
 	m.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -42,10 +74,51 @@ func port() string {
 }
 func (a *app) sync() {
 	b, _ := json.Marshal(a.menu)
-	req, _ := http.NewRequest(http.MethodPost, a.kitchen+"/partner/menu/sync", bytes.NewReader(b))
+
+	req, _ := http.NewRequest(
+		http.MethodPost,
+		a.kitchen+"/partner/menu/sync",
+		bytes.NewReader(b),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", "demo-api-key")
-	_, _ = http.DefaultClient.Do(req)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("menu sync failed", "error", err)
+		return
+	}
+	resp.Body.Close()
+
+	stocks := []map[string]any{
+		{
+			"id":       "a9f8378f-ed76-4664-9562-949129e9cc9a",
+			"kind":     "product",
+			"quantity": 10,
+		},
+		{
+			"id":       "a2833d65-627e-46f6-bf35-972cccd5bc00",
+			"kind":     "option",
+			"quantity": 10,
+		},
+	}
+
+	sb, _ := json.Marshal(stocks)
+
+	req, _ = http.NewRequest(
+		http.MethodPost,
+		a.kitchen+"/partner/stocks",
+		bytes.NewReader(sb),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", "demo-api-key")
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Error("stock sync failed", "error", err)
+		return
+	}
+	resp.Body.Close()
 }
 func (a *app) syncHTTP(w http.ResponseWriter, r *http.Request) { a.sync(); w.WriteHeader(204) }
 func (a *app) webhook(w http.ResponseWriter, r *http.Request) {

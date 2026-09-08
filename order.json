@@ -1,0 +1,14 @@
+﻿{
+    "comment":  "Тестовый заказ",
+    "items":  [
+                  {
+                      "quantity":  1,
+                      "product_id":  "a9f8378f-ed76-4664-9562-949129e9cc9a",
+                      "selected_options":  [
+                                               "a2833d65-627e-46f6-bf35-972cccd5bc00"
+                                           ]
+                  }
+              ],
+    "establishment_id":  "11111111-1111-1111-1111-111111111111",
+    "delivery_address":  "Тестовая улица, 1"
+}

@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/example/avito-kitchen/internal/kitchen/client"
 	"github.com/example/avito-kitchen/internal/kitchen/domain"
 	"github.com/example/avito-kitchen/internal/kitchen/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"time"
 )
 
 var ErrNotFound = errors.New("not found")

@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"net/http"
+
 	"github.com/example/avito-kitchen/internal/kitchen/domain"
 	"github.com/example/avito-kitchen/internal/kitchen/repository"
 	"github.com/example/avito-kitchen/internal/kitchen/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"log/slog"
-	"net/http"
 )
 
 type API struct {
@@ -45,17 +46,22 @@ func (a *API) Router() http.Handler {
 	})
 	return r
 }
-func id(req *http.Request) (uuid.UUID, error) { return uuid.Parse(chi.URLParam(req, "id")) }
+func id(r *http.Request) (uuid.UUID, error) {
+	return uuid.Parse(chi.URLParam(r, "id"))
+}
 func (a *API) establishments(w http.ResponseWriter, r *http.Request) {
 	x, e := a.r.Establishments(r.Context(), r.URL.Query().Get("q"))
 	respond(w, e, x)
 }
 func (a *API) establishment(w http.ResponseWriter, r *http.Request) {
-	x, e := id(r)
-	if e == nil {
-		x, e = a.r.Establishment(r.Context(), x)
+	id, err := id(r)
+	if err != nil {
+		respond(w, err, nil)
+		return
 	}
-	respond(w, e, x)
+
+	est, err := a.r.Establishment(r.Context(), id)
+	respond(w, err, est)
 }
 func (a *API) menu(w http.ResponseWriter, r *http.Request) {
 	x, e := id(r)
@@ -108,12 +114,12 @@ func (a *API) cancel(w http.ResponseWriter, r *http.Request) {
 }
 func (a *API) partner(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		e, er := a.r.ByKey(r.Context(), r.Header.Get("X-API-Key"))
-		if er != nil {
+		est, err := a.r.ByKey(r.Context(), r.Header.Get("X-API-Key"))
+		if err != nil {
 			fail(w, 401, "unauthorized", "invalid API key")
 			return
 		}
-		r = r.WithContext(withEst(r, e))
+		r = withEst(r, est) // ← просто так
 		next.ServeHTTP(w, r)
 	})
 }
