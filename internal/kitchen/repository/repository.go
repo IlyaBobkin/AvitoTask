@@ -246,7 +246,9 @@ func (r *Repository) SyncMenu(ctx context.Context, eid uuid.UUID, m domain.Menu)
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	// Полностью заменяем меню ресторана.
 	// Благодаря CASCADE старые stocks тоже удаляются.

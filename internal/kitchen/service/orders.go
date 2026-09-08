@@ -40,7 +40,9 @@ func (s *Orders) Create(ctx context.Context, user uuid.UUID, in CreateOrder) (do
 	if er != nil {
 		return domain.Order{}, er
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 	o := domain.Order{ID: uuid.New(), EstablishmentID: in.EstablishmentID, UserID: user, Status: "created"}
 	for _, it := range in.Items {
 		var p domain.Product
@@ -58,46 +60,138 @@ func (s *Orders) Create(ctx context.Context, user uuid.UUID, in CreateOrder) (do
 			return domain.Order{}, fmt.Errorf("%w: product out of stock", ErrRule)
 		}
 		item := domain.OrderItem{ID: uuid.New(), ProductID: p.ID, ProductName: p.Name, UnitPrice: p.Price, Quantity: it.Quantity}
-		rows, er := tx.Query(ctx, "SELECT m.id,m.is_required,o.id,o.name,o.price_delta,o.is_available FROM modifiers m JOIN modifier_options o ON o.modifier_id=m.id WHERE m.product_id=$1", p.ID)
+		rows, er := tx.Query(
+			ctx,
+			`SELECT
+				m.id,
+				m.is_required,
+				o.id,
+				o.name,
+				o.price_delta,
+				o.is_available
+			FROM modifiers m
+			JOIN modifier_options o ON o.modifier_id=m.id
+			WHERE m.product_id=$1`,
+			p.ID,
+		)
 		if er != nil {
 			return domain.Order{}, er
 		}
-		selected := map[uuid.UUID]bool{}
+
+		selected := make(map[uuid.UUID]bool)
 		for _, x := range it.OptionIDs {
 			selected[x] = true
 		}
-		required := map[uuid.UUID]bool{}
+
+		required := make(map[uuid.UUID]bool)
+
+		// Сначала полностью читаем результат запроса.
+		var options []struct {
+			modifierID uuid.UUID
+			required   bool
+			option     domain.Option
+		}
+
 		for rows.Next() {
 			var mid uuid.UUID
 			var req bool
 			var op domain.Option
-			if er = rows.Scan(&mid, &req, &op.ID, &op.Name, &op.PriceDelta, &op.IsAvailable); er != nil {
+
+			if er = rows.Scan(
+				&mid,
+				&req,
+				&op.ID,
+				&op.Name,
+				&op.PriceDelta,
+				&op.IsAvailable,
+			); er != nil {
 				rows.Close()
 				return domain.Order{}, er
 			}
-			if req {
-				required[mid] = true
-			}
-			if selected[op.ID] {
-				if !op.IsAvailable {
-					rows.Close()
-					return domain.Order{}, fmt.Errorf("%w: option unavailable", ErrRule)
-				}
-				var oq int
-				_ = tx.QueryRow(ctx, "SELECT quantity FROM stocks WHERE option_id=$1 FOR UPDATE", op.ID).Scan(&oq)
-				if oq < it.Quantity {
-					rows.Close()
-					return domain.Order{}, fmt.Errorf("%w: option out of stock", ErrRule)
-				}
-				item.UnitPrice += op.PriceDelta
-				item.Options = append(item.Options, domain.OrderItemOption{OptionID: op.ID, OptionName: op.Name, PriceDelta: op.PriceDelta})
-				delete(required, mid)
-			}
+
+			options = append(options, struct {
+				modifierID uuid.UUID
+				required   bool
+				option     domain.Option
+			}{
+				modifierID: mid,
+				required:   req,
+				option:     op,
+			})
 		}
+
+		if er = rows.Err(); er != nil {
+			rows.Close()
+			return domain.Order{}, er
+		}
+
 		rows.Close()
-		if len(required) > 0 {
-			return domain.Order{}, fmt.Errorf("%w: required modifier is not selected", ErrRule)
+
+		// Теперь rows закрыт, поэтому можно выполнять новые запросы
+		// через тот же transaction connection.
+		for _, x := range options {
+			if x.required {
+				required[x.modifierID] = true
+			}
+
+			if !selected[x.option.ID] {
+				continue
+			}
+
+			if !x.option.IsAvailable {
+				return domain.Order{}, fmt.Errorf(
+					"%w: option unavailable",
+					ErrRule,
+				)
+			}
+
+			var optionQuantity int
+
+			er = tx.QueryRow(
+				ctx,
+				"SELECT quantity FROM stocks WHERE option_id=$1 FOR UPDATE",
+				x.option.ID,
+			).Scan(&optionQuantity)
+
+			if er != nil {
+				if errors.Is(er, pgx.ErrNoRows) {
+					return domain.Order{}, fmt.Errorf(
+						"%w: option out of stock",
+						ErrRule,
+					)
+				}
+
+				return domain.Order{}, er
+			}
+
+			if optionQuantity < it.Quantity {
+				return domain.Order{}, fmt.Errorf(
+					"%w: option out of stock",
+					ErrRule,
+				)
+			}
+
+			item.UnitPrice += x.option.PriceDelta
+
+			item.Options = append(
+				item.Options,
+				domain.OrderItemOption{
+					OptionID:   x.option.ID,
+					OptionName: x.option.Name,
+					PriceDelta: x.option.PriceDelta,
+				},
+			)
+
+			delete(required, x.modifierID)
 		}
+
+		if len(required) > 0 {
+			return domain.Order{}, fmt.Errorf(
+				"%w: required modifier is not selected",
+				ErrRule,
+			)
+		}
+
 		item.TotalPrice = item.UnitPrice * int64(it.Quantity)
 		o.TotalAmount += item.TotalPrice
 		o.Items = append(o.Items, item)

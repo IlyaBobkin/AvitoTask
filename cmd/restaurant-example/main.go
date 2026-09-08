@@ -56,8 +56,10 @@ func main() {
 	}
 	go a.sync()
 	m := http.NewServeMux()
-	m.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	m.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			slog.Error("failed to encode health response", "error", err)
+		}
 	})
 	m.HandleFunc("/webhook/order", a.webhook)
 	m.HandleFunc("/menu", a.getMenu)
@@ -120,7 +122,7 @@ func (a *app) sync() {
 	}
 	resp.Body.Close()
 }
-func (a *app) syncHTTP(w http.ResponseWriter, r *http.Request) { a.sync(); w.WriteHeader(204) }
+func (a *app) syncHTTP(w http.ResponseWriter, _ *http.Request) { a.sync(); w.WriteHeader(204) }
 func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 	var x json.RawMessage
 	if json.NewDecoder(r.Body).Decode(&x) == nil {
@@ -130,9 +132,15 @@ func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
-func (a *app) getMenu(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(a.menu) }
-func (a *app) getOrders(w http.ResponseWriter, r *http.Request) {
+func (a *app) getMenu(w http.ResponseWriter, _ *http.Request) {
+	if err := json.NewEncoder(w).Encode(a.menu); err != nil {
+		slog.Error("failed to encode menu", "error", err)
+	}
+}
+func (a *app) getOrders(w http.ResponseWriter, _ *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	json.NewEncoder(w).Encode(a.orders)
+	if err := json.NewEncoder(w).Encode(a.orders); err != nil {
+		slog.Error("failed to encode orders", "error", err)
+	}
 }
