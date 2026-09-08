@@ -1,15 +1,820 @@
 openapi: 3.0.3
-info: {title: Avito Kitchen MVP, version: 1.0.0}
+
+info:
+  title: Авито.Кухня API
+  description: |
+    REST API MVP платформы «Авито.Кухня».
+
+    API предоставляет:
+    - публичный API для просмотра заведений и меню;
+    - создание и просмотр заказов;
+    - отмену заказов;
+    - Partner API для заведений;
+    - синхронизацию меню и остатков;
+    - управление статусами заказов.
+
+    Денежные значения передаются в копейках.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: System
+    description: Системные endpoints
+  - name: Public
+    description: API для пользователей
+  - name: Partner
+    description: API для заведений-партнёров
+
 paths:
-  /api/v1/health: {get: {responses: {'200': {description: OK}}}}
-  /api/v1/establishments: {get: {responses: {'200': {description: Establishments}}}}
-  /api/v1/establishments/{id}: {get: {parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}], responses: {'200': {description: Establishment}}}}
-  /api/v1/establishments/{id}/menu: {get: {responses: {'200': {description: Menu}}}}
-  /api/v1/orders: {post: {parameters: [{name: X-User-Id, in: header, required: true, schema: {type: string, format: uuid}}], responses: {'201': {description: Created}, '422': {description: Business validation}}}}
-  /api/v1/orders/{id}: {get: {responses: {'200': {description: Order}}}}
-  /api/v1/orders/{id}/cancel: {post: {responses: {'200': {description: Cancelled}}}}
-  /partner/menu/sync: {post: {responses: {'200': {description: Synced}}}}
-  /partner/stocks: {post: {responses: {'200': {description: Updated}}}}
-  /partner/orders: {get: {responses: {'200': {description: Orders}}}}
-  /partner/orders/{id}: {get: {responses: {'200': {description: Order}}}}
-  /partner/orders/{id}/status: {patch: {responses: {'200': {description: Updated}}}}
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Проверка работоспособности API
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API работает
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/v1/establishments:
+    get:
+      tags:
+        - Public
+      summary: Получить список заведений
+      operationId: listEstablishments
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Поиск заведения по названию
+          schema:
+            type: string
+          example: Bistro
+      responses:
+        '200':
+          description: Список заведений
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Establishment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/establishments/{id}:
+    get:
+      tags:
+        - Public
+      summary: Получить заведение
+      operationId: getEstablishment
+      parameters:
+        - $ref: '#/components/parameters/EstablishmentId'
+      responses:
+        '200':
+          description: Заведение
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Establishment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/establishments/{id}/menu:
+    get:
+      tags:
+        - Public
+      summary: Получить меню заведения
+      operationId: getMenu
+      parameters:
+        - $ref: '#/components/parameters/EstablishmentId'
+      responses:
+        '200':
+          description: Меню
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Menu'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/orders:
+    post:
+      tags:
+        - Public
+      summary: Создать заказ
+      operationId: createOrder
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrder'
+            example:
+              establishment_id: "550e8400-e29b-41d4-a716-446655440000"
+              items:
+                - product_id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                  quantity: 2
+                  option_ids:
+                    - "7ba7b810-9dad-11d1-80b4-00c04fd430c8"
+      responses:
+        '201':
+          description: Заказ создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/orders/{id}:
+    get:
+      tags:
+        - Public
+      summary: Получить заказ
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/orders/{id}/cancel:
+    post:
+      tags:
+        - Public
+      summary: Отменить заказ
+      description: |
+        Заказ можно отменить только из состояний `created` или `confirmed`.
+
+        Причина отмены обязательна.
+      operationId: cancelOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelOrderRequest'
+            example:
+              reason: Пользователь передумал
+      responses:
+        '200':
+          description: Заказ отменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                status: cancelled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /partner/menu/sync:
+    post:
+      tags:
+        - Partner
+      summary: Синхронизировать меню
+      description: |
+        Полностью заменяет меню текущего заведения.
+
+        Заведение определяется по заголовку `X-API-Key`.
+      operationId: syncMenu
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Menu'
+      responses:
+        '200':
+          description: Меню синхронизировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                status: synced
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /partner/stocks:
+    post:
+      tags:
+        - Partner
+      summary: Обновить остатки
+      description: |
+        Обновляет количество доступных единиц товара
+        или опции модификатора.
+
+        Заведение определяется по заголовку `X-API-Key`.
+      operationId: updateStocks
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/StockInput'
+            example:
+              - id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                kind: product
+                quantity: 15
+              - id: "7ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                kind: option
+                quantity: 8
+      responses:
+        '200':
+          description: Остатки обновлены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                status: updated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /partner/orders:
+    get:
+      tags:
+        - Partner
+      summary: Получить заказы заведения
+      operationId: listPartnerOrders
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /partner/orders/{id}:
+    get:
+      tags:
+        - Partner
+      summary: Получить заказ заведения
+      operationId: getPartnerOrder
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /partner/orders/{id}/status:
+    patch:
+      tags:
+        - Partner
+      summary: Изменить статус заказа
+      description: |
+        Изменяет статус заказа с проверкой допустимого перехода.
+
+        Допустимые переходы:
+
+        `created -> confirmed | cancelled`
+
+        `confirmed -> cooking | cancelled`
+
+        `cooking -> ready`
+
+        `ready -> delivering`
+
+        `delivering -> delivered`
+
+        Для перехода в `cancelled` причина обязательна.
+      operationId: updateOrderStatus
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderStatusRequest'
+            examples:
+              cooking:
+                value:
+                  status: cooking
+                  reason: ""
+              cancelled:
+                value:
+                  status: cancelled
+                  reason: Товар закончился
+      responses:
+        '200':
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+              example:
+                status: updated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API-ключ заведения-партнёра
+
+  parameters:
+
+    EstablishmentId:
+      name: id
+      in: path
+      required: true
+      description: UUID заведения
+      schema:
+        type: string
+        format: uuid
+
+    OrderId:
+      name: id
+      in: path
+      required: true
+      description: UUID заказа
+      schema:
+        type: string
+        format: uuid
+
+    UserId:
+      name: X-User-Id
+      in: header
+      required: true
+      description: UUID пользователя
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: bad_request
+            message: invalid request
+
+    Unauthorized:
+      description: Некорректный API-ключ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: unauthorized
+            message: invalid API key
+
+    NotFound:
+      description: Объект не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: not_found
+            message: not found
+
+    ValidationError:
+      description: Нарушено бизнес-правило
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: validation_error
+            message: product unavailable
+
+  schemas:
+
+    Establishment:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - min_order_amount
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID заведения
+        name:
+          type: string
+          description: Название заведения
+          example: Demo Bistro
+        description:
+          type: string
+          description: Описание заведения
+          example: Тестовое заведение
+        min_order_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Минимальная сумма заказа в копейках
+          example: 50000
+
+    Menu:
+      type: object
+      required:
+        - categories
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+
+    Category:
+      type: object
+      required:
+        - id
+        - name
+        - position
+        - products
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Пицца
+        position:
+          type: integer
+          description: Позиция категории в меню
+          example: 1
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+
+    Product:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - price
+        - is_available
+        - modifiers
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Маргарита
+        description:
+          type: string
+          example: Пицца с томатами и моцареллой
+        price:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Цена в копейках
+          example: 65000
+        is_available:
+          type: boolean
+          example: true
+        modifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Modifier'
+
+    Modifier:
+      type: object
+      required:
+        - id
+        - name
+        - is_required
+        - options
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Размер
+        is_required:
+          type: boolean
+          description: Является ли выбор обязательным
+          example: true
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModifierOption'
+
+    ModifierOption:
+      type: object
+      required:
+        - id
+        - name
+        - price_delta
+        - is_available
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Большая
+        price_delta:
+          type: integer
+          format: int64
+          description: Изменение цены в копейках
+          example: 15000
+        is_available:
+          type: boolean
+          example: true
+
+    CreateOrder:
+      type: object
+      required:
+        - establishment_id
+        - items
+      properties:
+        establishment_id:
+          type: string
+          format: uuid
+          description: UUID заведения
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateOrderItem'
+
+    CreateOrderItem:
+      type: object
+      required:
+        - product_id
+        - quantity
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+        option_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    Order:
+      type: object
+      required:
+        - id
+        - establishment_id
+        - user_id
+        - status
+        - total_amount
+        - items
+        - history
+      properties:
+        id:
+          type: string
+          format: uuid
+        establishment_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total_amount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Итоговая сумма заказа в копейках
+          example: 145000
+        cancellation_reason:
+          type: string
+          nullable: true
+          description: Причина отмены заказа
+          example: Пользователь передумал
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusHistory'
+
+    OrderItem:
+      type: object
+      required:
+        - id
+        - product_id
+        - product_name
+        - unit_price
+        - quantity
+        - total_price
+        - options
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        product_name:
+          type: string
+        unit_price:
+          type: integer
+          format: int64
+          description: Цена единицы товара с учётом выбранных модификаторов, в копейках
+        quantity:
+          type: integer
+          minimum: 1
+        total_price:
+          type: integer
+          format: int64
+          description: Стоимость позиции в копейках
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemOption'
+
+    OrderItemOption:
+      type: object
+      required:
+        - option_id
+        - option_name
+        - price_delta
+      properties:
+        option_id:
+          type: string
+          format: uuid
+        option_name:
+          type: string
+        price_delta:
+          type: integer
+          format: int64
+          description: Изменение цены в копейках
+
+    StatusHistory:
+      type: object
+      required:
+        - status
+        - created_at
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    OrderStatus:
+      type: string
+      enum:
+        - created
+        - confirmed
+        - cooking
+        - ready
+        - delivering
+        - delivered
+        - cancelled
+
+    CancelOrderRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Причина отмены
+          example: Пользователь передумал
+
+    UpdateOrderStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        reason:
+          type: string
+          description: Причина отмены. Обязательна при status=cancelled.
+          example: Товар закончился
+
+    StockInput:
+      type: object
+      required:
+        - id
+        - kind
+        - quantity
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID товара или опции модификатора
+        kind:
+          type: string
+          enum:
+            - product
+            - option
+          description: Тип объекта остатка
+        quantity:
+          type: integer
+          minimum: 0
+          description: Количество доступных единиц
+          example: 10
+
+    StatusResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: updated
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: validation_error
+        message:
+          type: string
+          example: product unavailable

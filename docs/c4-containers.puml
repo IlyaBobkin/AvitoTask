@@ -3,38 +3,36 @@
 title Avito.Кухня MVP — C4 Container Diagram
 
 skinparam rectangle {
-BackgroundColor white
-BorderColor black
+    BackgroundColor white
+    BorderColor black
 }
 
 actor "Пользователь" as Customer
 
 rectangle "Web Client" as Web {
-[Frontend MVP]
+    [Frontend MVP]
 }
 
 rectangle "Kitchen API" as API {
-[Public API]
-[Partner API]
-[Order Management]
+    [Public API]
+    [Partner API]
+    [Order Management]
 }
 
 database "PostgreSQL" as DB
 
 rectangle "Restaurant Example" as Restaurant {
-[Restaurant API]
-[Webhook Endpoint]
+    [Restaurant API]
+    [Webhook Endpoint]
 }
 
 Customer --> Web : Использует сервис
 
-Web --> API : REST API\nпросмотр меню\nсоздание заказов
+Web --> API : REST API
+API --> DB : Чтение / запись
 
-API --> DB : чтение/запись данных
+Restaurant --> API : Partner API\nсинхронизация меню\nсинхронизация остатков\nизменение статусов
 
-Restaurant --> API : синхронизация меню\nсинхронизация остатков\nизменение статусов
-
-API --> Restaurant : webhook\norder.created
+API --> Restaurant : Webhook\norder.created
 
 @enduml
-
