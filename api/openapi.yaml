@@ -1,0 +1,15 @@
+openapi: 3.0.3
+info: {title: Avito Kitchen MVP, version: 1.0.0}
+paths:
+  /api/v1/health: {get: {responses: {'200': {description: OK}}}}
+  /api/v1/establishments: {get: {responses: {'200': {description: Establishments}}}}
+  /api/v1/establishments/{id}: {get: {parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}], responses: {'200': {description: Establishment}}}}
+  /api/v1/establishments/{id}/menu: {get: {responses: {'200': {description: Menu}}}}
+  /api/v1/orders: {post: {parameters: [{name: X-User-Id, in: header, required: true, schema: {type: string, format: uuid}}], responses: {'201': {description: Created}, '422': {description: Business validation}}}}
+  /api/v1/orders/{id}: {get: {responses: {'200': {description: Order}}}}
+  /api/v1/orders/{id}/cancel: {post: {responses: {'200': {description: Cancelled}}}}
+  /partner/menu/sync: {post: {responses: {'200': {description: Synced}}}}
+  /partner/stocks: {post: {responses: {'200': {description: Updated}}}}
+  /partner/orders: {get: {responses: {'200': {description: Orders}}}}
+  /partner/orders/{id}: {get: {responses: {'200': {description: Order}}}}
+  /partner/orders/{id}/status: {patch: {responses: {'200': {description: Updated}}}}

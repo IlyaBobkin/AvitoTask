@@ -1,0 +1,7 @@
+@startuml
+actor User
+User -> API: Browse establishments/menu
+User -> API: Create order
+API -> Restaurant: order.created webhook
+User -> API: Track or cancel order
+@enduml

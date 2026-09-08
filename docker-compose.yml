@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kitchen
+      POSTGRES_USER: kitchen
+      POSTGRES_PASSWORD: kitchen
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kitchen -d kitchen"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes: [postgres_data:/var/lib/postgresql/data]
+  kitchen-api:
+    build: {context: ., dockerfile: Dockerfile.kitchen}
+    environment: {DATABASE_URL: postgres://kitchen:kitchen@postgres:5432/kitchen?sslmode=disable, PORT: "8080"}
+    ports: ["8080:8080"]
+    depends_on: {postgres: {condition: service_healthy}}
+  restaurant-example:
+    build: {context: ., dockerfile: Dockerfile.restaurant}
+    environment: {KITCHEN_URL: http://kitchen-api:8080, PORT: "8081"}
+    ports: ["8081:8081"]
+    depends_on: [kitchen-api]
+volumes: {postgres_data: {}}

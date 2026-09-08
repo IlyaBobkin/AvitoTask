@@ -1,0 +1,6 @@
+@startuml
+actor Restaurant
+Restaurant -> API: Sync menu and stocks
+API -> Restaurant: order.created webhook
+Restaurant -> API: Confirm and progress status
+@enduml
