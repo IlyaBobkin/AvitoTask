@@ -1,0 +1,10 @@
+@startuml
+actor Customer
+rectangle "kitchen-api\nGo / chi" as api
+database "PostgreSQL 16" as db
+rectangle "restaurant-example\nGo" as rest
+Customer --> api
+api --> db
+api --> rest : webhook
+rest --> api : Partner API
+@enduml

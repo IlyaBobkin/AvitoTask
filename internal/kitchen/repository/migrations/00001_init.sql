@@ -1,0 +1,17 @@
+-- +goose Up
+CREATE TABLE establishments (id uuid PRIMARY KEY, name text NOT NULL, description text NOT NULL DEFAULT '', min_order_amount bigint NOT NULL CHECK(min_order_amount >= 0), api_key text NOT NULL UNIQUE, webhook_url text NOT NULL, is_active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE categories (id uuid PRIMARY KEY, establishment_id uuid NOT NULL REFERENCES establishments(id) ON DELETE CASCADE, name text NOT NULL, position integer NOT NULL DEFAULT 0, UNIQUE(establishment_id,name));
+CREATE TABLE products (id uuid PRIMARY KEY, establishment_id uuid NOT NULL REFERENCES establishments(id) ON DELETE CASCADE, category_id uuid NOT NULL REFERENCES categories(id) ON DELETE CASCADE, name text NOT NULL, description text NOT NULL DEFAULT '', price bigint NOT NULL CHECK(price >= 0), is_available boolean NOT NULL DEFAULT true);
+CREATE INDEX products_establishment_idx ON products(establishment_id);
+CREATE TABLE modifiers (id uuid PRIMARY KEY, product_id uuid NOT NULL REFERENCES products(id) ON DELETE CASCADE, name text NOT NULL, is_required boolean NOT NULL DEFAULT false);
+CREATE TABLE modifier_options (id uuid PRIMARY KEY, modifier_id uuid NOT NULL REFERENCES modifiers(id) ON DELETE CASCADE, name text NOT NULL, price_delta bigint NOT NULL DEFAULT 0, is_available boolean NOT NULL DEFAULT true);
+CREATE TABLE stocks (id uuid PRIMARY KEY, product_id uuid REFERENCES products(id) ON DELETE CASCADE, option_id uuid REFERENCES modifier_options(id) ON DELETE CASCADE, quantity integer NOT NULL CHECK(quantity >= 0), CHECK ((product_id IS NOT NULL) <> (option_id IS NOT NULL)), UNIQUE NULLS NOT DISTINCT(product_id, option_id));
+CREATE TABLE orders (id uuid PRIMARY KEY, establishment_id uuid NOT NULL REFERENCES establishments(id), user_id uuid NOT NULL, status text NOT NULL CHECK(status IN ('created','confirmed','cooking','ready','delivering','delivered','cancelled')), total_amount bigint NOT NULL CHECK(total_amount >= 0), cancellation_reason text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), CHECK ((status = 'cancelled') = (cancellation_reason IS NOT NULL)));
+CREATE INDEX orders_establishment_idx ON orders(establishment_id, created_at DESC); CREATE INDEX orders_user_idx ON orders(user_id, created_at DESC);
+CREATE TABLE order_items (id uuid PRIMARY KEY, order_id uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE, product_id uuid NOT NULL REFERENCES products(id), product_name text NOT NULL, unit_price bigint NOT NULL, quantity integer NOT NULL CHECK(quantity > 0), total_price bigint NOT NULL);
+CREATE TABLE order_item_options (id uuid PRIMARY KEY, order_item_id uuid NOT NULL REFERENCES order_items(id) ON DELETE CASCADE, option_id uuid NOT NULL REFERENCES modifier_options(id), option_name text NOT NULL, price_delta bigint NOT NULL);
+CREATE TABLE order_status_history (id uuid PRIMARY KEY, order_id uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE, status text NOT NULL, reason text, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX order_history_order_idx ON order_status_history(order_id, created_at);
+INSERT INTO establishments(id,name,description,min_order_amount,api_key,webhook_url) VALUES ('11111111-1111-1111-1111-111111111111','Demo Bistro','Example restaurant',50000,'demo-api-key','http://restaurant-example:8081/webhook/order');
+-- +goose Down
+DROP TABLE IF EXISTS order_status_history, order_item_options, order_items, orders, stocks, modifier_options, modifiers, products, categories, establishments;
