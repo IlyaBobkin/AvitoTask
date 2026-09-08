@@ -1,6 +1,44 @@
 @startuml
-actor Restaurant
-Restaurant -> API: Sync menu and stocks
-API -> Restaurant: order.created webhook
-Restaurant -> API: Confirm and progress status
+title CJM — Заведение-партнёр
+
+start
+
+:Подключается к платформе;
+
+:Синхронизирует меню;
+
+:Синхронизирует остатки;
+
+:Получает webhook о новом заказе;
+
+if (Можно выполнить заказ?) then (Да)
+
+
+:Подтверждает заказ;
+:Статус confirmed;
+
+:Начинает приготовление;
+:Статус cooking;
+
+:Заказ готов;
+:Статус ready;
+
+:Передаёт в доставку;
+:Статус delivering;
+
+:Заказ доставлен;
+:Статус delivered;
+
+
+else (Нет)
+
+
+:Отменяет заказ;
+:Статус cancelled;
+
+
+endif
+
+stop
+
 @enduml

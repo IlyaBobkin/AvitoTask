@@ -1,10 +1,40 @@
 @startuml
-actor Customer
-rectangle "kitchen-api\nGo / chi" as api
-database "PostgreSQL 16" as db
-rectangle "restaurant-example\nGo" as rest
-Customer --> api
-api --> db
-api --> rest : webhook
-rest --> api : Partner API
+
+title Avito.Кухня MVP — C4 Container Diagram
+
+skinparam rectangle {
+BackgroundColor white
+BorderColor black
+}
+
+actor "Пользователь" as Customer
+
+rectangle "Web Client" as Web {
+[Frontend MVP]
+}
+
+rectangle "Kitchen API" as API {
+[Public API]
+[Partner API]
+[Order Management]
+}
+
+database "PostgreSQL" as DB
+
+rectangle "Restaurant Example" as Restaurant {
+[Restaurant API]
+[Webhook Endpoint]
+}
+
+Customer --> Web : Использует сервис
+
+Web --> API : REST API\nпросмотр меню\nсоздание заказов
+
+API --> DB : чтение/запись данных
+
+Restaurant --> API : синхронизация меню\nсинхронизация остатков\nизменение статусов
+
+API --> Restaurant : webhook\norder.created
+
 @enduml
+

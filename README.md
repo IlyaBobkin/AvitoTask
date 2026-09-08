@@ -1,31 +1,294 @@
 # Авито.Кухня MVP
 
-Monorepo with `kitchen-api` (Go/chi, PostgreSQL) and an in-memory `restaurant-example`. Money is always integer kopecks; IDs are UUIDs.
+Тестовое задание на стажировку Backend (осенняя волна 2026).
 
-## Architecture and data
-The [C4 diagram](docs/c4-containers.puml) shows the three containers. The API is layered as `domain -> service -> repository -> handler`. PostgreSQL schema migration creates establishments, menu/catalog tables, stocks, orders, immutable order snapshots, and status history. Catalog synchronization replaces a restaurant's menu atomically.
+Проект представляет собой MVP сервиса заказа еды через площадку Авито.Кухня. В рамках MVP реализован API для пользователей и API для заведений-партнёров, а также пример интеграции ресторана через отдельный сервис.
 
-## Start
+---
+
+# Возможности
+
+## Пользовательский API
+
+Пользователь может:
+
+* просматривать список заведений;
+* получать меню выбранного заведения;
+* создавать заказ;
+* просматривать информацию о заказе;
+* отслеживать текущий статус заказа;
+* отменять заказ до начала приготовления.
+
+## API для заведений
+
+Заведение может:
+
+* синхронизировать меню;
+* синхронизировать остатки товаров;
+* получать уведомления о новых заказах через webhook;
+* изменять статус заказа;
+* отменять заказ при невозможности выполнения.
+
+---
+
+# Основные бизнес-сценарии
+
+## Сценарий пользователя
+
+1. Пользователь открывает Авито.Кухня.
+2. Выбирает заведение.
+3. Просматривает меню.
+4. Выбирает товары и модификаторы.
+5. Оформляет заказ.
+6. Получает идентификатор заказа.
+7. Отслеживает статус заказа.
+8. Получает доставку либо отменяет заказ до начала приготовления.
+
+## Сценарий заведения
+
+1. Заведение подключается к платформе.
+2. Загружает меню.
+3. Передаёт остатки товаров.
+4. Получает уведомление о новом заказе.
+5. Подтверждает заказ.
+6. Готовит заказ.
+7. Передаёт заказ в доставку.
+8. Завершает заказ.
+
+---
+
+# Архитектура
+
+Система состоит из двух сервисов:
+
+## kitchen-api
+
+Основной сервис платформы.
+
+Отвечает за:
+
+* каталог заведений;
+* меню;
+* остатки товаров;
+* оформление заказов;
+* хранение истории заказов;
+* взаимодействие с партнёрами.
+
+## restaurant-example
+
+Демонстрационный сервис ресторана.
+
+Отвечает за:
+
+* публикацию меню;
+* приём webhook-уведомлений;
+* имитацию работы партнёра.
+
+---
+
+# Архитектурный стиль
+
+Используется классическая слоистая архитектура:
+
+```text
+HTTP Handler
+        ↓
+Service Layer
+        ↓
+Repository Layer
+        ↓
+PostgreSQL
+```
+
+Ответственность слоёв:
+
+* Handler — HTTP API и валидация запросов.
+* Service — бизнес-логика.
+* Repository — работа с БД.
+* PostgreSQL — хранение данных.
+
+---
+
+# Модель данных
+
+Основные сущности:
+
+* establishments
+* products
+* product_options
+* stocks
+* orders
+* order_items
+* order_item_options
+* order_status_history
+
+## Почему используется snapshot заказа
+
+При создании заказа данные товара копируются в заказ:
+
+* название товара;
+* цена товара;
+* выбранные модификаторы;
+* стоимость модификаторов.
+
+Это позволяет сохранить историческую корректность заказа даже после изменения меню рестораном.
+
+---
+
+# Статусы заказа
+
+Поддерживаются следующие статусы:
+
+```text
+created
+confirmed
+cooking
+ready
+delivering
+delivered
+cancelled
+```
+
+Поддерживаемые переходы:
+
+```text
+created -> confirmed
+created -> cancelled
+
+confirmed -> cooking
+confirmed -> cancelled
+
+cooking -> ready
+
+ready -> delivering
+
+delivering -> delivered
+```
+
+---
+
+# Технические решения
+
+## UUID
+
+Для всех основных сущностей используются UUID.
+
+Причины:
+
+* отсутствие зависимости от последовательностей БД;
+* упрощение интеграции с внешними системами;
+* удобство горизонтального масштабирования.
+
+## Деньги в bigint
+
+Стоимость хранится в копейках.
+
+Пример:
+
+```text
+59900 = 599 рублей
+```
+
+Такой подход исключает ошибки округления.
+
+## Транзакции
+
+Создание заказа выполняется в транзакции.
+
+Во время оформления заказа используются блокировки строк для предотвращения гонок при изменении остатков.
+
+---
+
+# Интеграция заведений
+
+Для интеграции используется Partner API.
+
+Основные возможности:
+
+* синхронизация меню;
+* синхронизация остатков;
+* изменение статусов заказов.
+
+После оформления заказа платформа отправляет webhook:
+
+```text
+order.created
+```
+
+в сервис ресторана.
+
+---
+
+# Масштабирование после MVP
+
+Для промышленной эксплуатации потребуются следующие улучшения:
+
+* аутентификация и авторизация пользователей;
+* пагинация списков;
+* retry-механизм для webhook;
+* Outbox Pattern для гарантированной доставки событий;
+* кэширование меню;
+* мониторинг и метрики;
+* распределённая трассировка;
+* асинхронная обработка заказов через очередь сообщений;
+* реплики PostgreSQL для чтения.
+
+---
+
+# Ограничения MVP
+
+Для упрощения реализации намеренно не реализованы:
+
+* пользовательская аутентификация;
+* платежи;
+* курьерская доставка;
+* геолокация;
+* временные интервалы доставки;
+* мультирегиональность;
+* rate limiting;
+* retry webhook;
+* distributed tracing.
+
+---
+
+# Запуск
+
 ```bash
 docker-compose up --build
-curl http://localhost:8080/health
-curl http://localhost:8080/api/v1/establishments
-curl http://localhost:8080/api/v1/establishments/11111111-1111-1111-1111-111111111111/menu
 ```
-The demo restaurant synchronizes a Burger menu on startup. Use its menu response to get generated product/option IDs, then create an order:
+
+Проверка работоспособности:
+
 ```bash
-curl -X POST localhost:8080/api/v1/orders -H 'Content-Type: application/json' -H 'X-User-Id: 22222222-2222-2222-2222-222222222222' -d '{"establishment_id":"11111111-1111-1111-1111-111111111111","items":[{"product_id":"PRODUCT_UUID","quantity":1,"option_ids":["OPTION_UUID"]}]}'
-curl -X POST localhost:8080/api/v1/orders/ORDER_UUID/cancel -H 'Content-Type: application/json' -d '{"reason":"changed my mind"}'
+curl http://localhost:8080/health
 ```
-Partner API uses `X-API-Key: demo-api-key`. Restaurant demo endpoints are `GET /menu`, `POST /sync`, `GET /orders`; webhook is `/webhook/order`.
 
-## MVP simplifications
-* No real user authentication: `X-User-Id` is a UUID header.
-* No payments, couriers, geolocation, delivery time slots, or multiple cities.
-* Webhooks are synchronous and intentionally have no retry/outbox.
-* `restaurant-example` keeps its menu and received orders in memory.
-* No rate limiting or distributed tracing.
-* SQL is configured for sqlc in `sqlc.yaml`; migrations are goose-compatible SQL and are applied on API startup for a self-contained demo.
+Получение заведений:
 
-## Diagrams
-See [user CJM](docs/cjm-user.puml), [restaurant CJM](docs/cjm-restaurant.puml), and [C4 containers](docs/c4-containers.puml).
+```bash
+curl http://localhost:8080/api/v1/establishments
+```
+
+Получение меню:
+
+```bash
+curl http://localhost:8080/api/v1/establishments/{id}/menu
+```
+
+Создание заказа:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/orders
+```
+
+---
+
+# Документация
+
+В репозитории присутствуют:
+
+* OpenAPI спецификация;
+* миграции БД;
+* диаграмма контейнеров C4;
+* CJM пользователя;
+* CJM заведения.
